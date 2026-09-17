@@ -153,7 +153,7 @@ const LETTERS='CDEFGAB';
 function pcOf(s){ let p=LET[s[0]]; for(const c of s.slice(1)){ if(c==='#')p++; else if(c==='b')p--; } return (p+12)%12; }
 const SUPMAP={'⁰':'0','¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9','₀':'0','₁':'1','₂':'2','₃':'3','₄':'4','₅':'5','₆':'6','₇':'7','₈':'8','₉':'9'};
 function normChordText(t){
-  return t.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹₀-₉]/g,c=>SUPMAP[c]).replace(/[♯＃]/g,'#').replace(/♭/g,'b')
+  return t.replace(/[\u200B-\u200F\uFEFF]/g,'').replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹₀-₉]/g,c=>SUPMAP[c]).replace(/[♯＃]/g,'#').replace(/♭/g,'b')
     .replace(/／/g,'/').replace(/（/g,'(').replace(/）/g,')').replace(/[Δ△]/g,'maj').replace(/[º°]/g,'dim').replace(/\s+/g,'');
 }
 const QUAL_OK=/^(?:maj|Maj|MAJ|M|min|mi|m|-|dim|aug|\+|sus|add|no|omit|alt|ø|[0-9]|#|b|\(|\)|,|\/(?=[0-9]))*$/;
@@ -289,6 +289,7 @@ async function pdfGlyphs(page, vp){
       const x0=st.x+x*st.hs, x1=st.x+(x+w)*st.hs;
       const p0=U.applyTransform([x0, st.y+st.rise-0.02*st.size], M);
       const p1=U.applyTransform([x1, st.y+st.rise+0.72*st.size], M);
+      if(/^[\u200B-\u200F\uFEFF]$/.test(ch)){ x+=w; continue; }   // 零寬字元：不佔字位
       if(ch&&ch.trim()){ total++; if(guess)guessed++;
         out.push({ch:normChordText(ch)||ch, x:Math.min(p0[0],p1[0]), y:Math.min(p0[1],p1[1]), w:Math.abs(p1[0]-p0[0]), h:Math.abs(p1[1]-p0[1])}); }
       else out.push({ch:' ', x:Math.min(p0[0],p1[0]), y:Math.min(p0[1],p1[1]), w:Math.abs(p1[0]-p0[0]), h:Math.abs(p1[1]-p0[1])});
@@ -324,15 +325,25 @@ async function pdfGlyphs(page, vp){
   }
   return {glyphs:out, guessRatio: total?guessed/total:0};
 }
-/* 字形串 → 字塊（遇空白、中文、| 、字級變化、間距過大就斷開） */
+/* 字形串 → 字塊與單字
+   字塊（pieces）：只含和弦可能用到的字元，給和弦合併用
+   單字（words）：所有字元（含中文），給整行分類用
+   有些 PDF（如 Skia 輸出）一個字母一段繪圖指令，所以段落分界只當參考，實際以間距與行位判斷 */
 const CHORDISH=/^[A-Za-z0-9#\/()+\-°ø,]$/;
 function glyphsToPieces(glyphs){
-  const pieces=[], seps=[], plain=[];
-  let cur=null;
+  const pieces=[], seps=[], words=[];
+  let plain='', cur=null, wc=null;
+  const grow=(o,g)=>{ const x1=Math.max(o.x+o.w,g.x+g.w), y1=Math.max(o.y+o.h,g.y+g.h); o.text+=g.ch; o.x=Math.min(o.x,g.x); o.y=Math.min(o.y,g.y); o.w=x1-o.x; o.h=y1-o.y; };
   const flush=()=>{ if(cur){ pieces.push(cur); cur=null; } };
+  const wflush=()=>{ if(wc){ words.push(wc); plain+=wc.text+' '; wc=null; } };
   for(const g of glyphs){
-    if(g.brk){ flush(); plain.push(' '); continue; }
-    plain.push(g.ch);
+    if(g.brk)continue;
+    if(g.ch===' '){ wflush(); flush(); continue; }
+    if(wc){
+      const gap=g.x-(wc.x+wc.w), ov=Math.min(wc.y+wc.h,g.y+g.h)-Math.max(wc.y,g.y), mh=Math.min(wc.h,g.h);
+      if(gap>mh*0.3||gap<-Math.max(wc.h,g.h)*0.6||ov<mh*0.2){ wflush(); }
+    }
+    if(!wc) wc={text:g.ch,x:g.x,y:g.y,w:g.w,h:g.h}; else grow(wc,g);
     if(g.ch==='|'){ flush(); seps.push(g); continue; }
     if(!CHORDISH.test(g.ch)){ flush(); continue; }
     if(cur){
@@ -340,12 +351,10 @@ function glyphsToPieces(glyphs){
       const sameLine=Math.abs((g.y+g.h/2)-(cur.y+cur.h/2))<cur.h*0.35;
       if(gap>cur.h*0.25||gap<-cur.h*0.5||sizeJump>0.15||!sameLine) flush();
     }
-    if(!cur) cur={text:g.ch, x:g.x, y:g.y, w:g.w, h:g.h};
-    else{ const x1=Math.max(cur.x+cur.w,g.x+g.w), y1=Math.max(cur.y+cur.h,g.y+g.h);
-      cur.text+=g.ch; cur.x=Math.min(cur.x,g.x); cur.y=Math.min(cur.y,g.y); cur.w=x1-cur.x; cur.h=y1-cur.y; }
+    if(!cur) cur={text:g.ch, x:g.x, y:g.y, w:g.w, h:g.h}; else grow(cur,g);
   }
-  flush();
-  return {pieces, seps, plain:plain.join('')};
+  flush(); wflush();
+  return {pieces, seps, words, plain};
 }
 
 /* ================= 共用：字塊合併成和弦（處理上標升降、下標 Maj7、括號） ================= */
@@ -365,7 +374,7 @@ function mergePieces(pieces, seps, src){
       const deco=p=>/^(?:[#b0-9()+]+|(?:maj|Maj|sus|add|dim|aug|m|min)[0-9]*)$/.test(p.text);
       const shifted=small||deco(B)||deco(A);
       // 斜線低音（如 Em9 /C）常和前一個和弦隔一點距離
-      const slashBass=/^\/[A-G]?/.test(B.text)&&/[A-Za-z0-9#)]$/.test(A.text);
+      const slashBass=/^\/[A-G]/.test(B.text)&&/[A-Za-z0-9#)]$/.test(A.text);
       if(gap>H*(slashBass?1.3:shifted?0.45:0.22))continue;
       const big=A.h>=B.h?A:B, sm=A.h>=B.h?B:A, cy=sm.y+sm.h/2;
       if(cy<big.y-big.h*0.6||cy>big.y+big.h*1.6)continue;
@@ -392,11 +401,14 @@ function mergePieces(pieces, seps, src){
     const p=parseChord(text)||(bare!==text?parseChord(bare):null);
     if(p){ const wrap=bare!==text&&!parseChord(text)?[text.match(/^[(\[]*/)[0],text.match(/[)\]]*$/)[0]]:null;
       out.push({...box, text:p.text, p, conf, src, baseH:main.h, wrap}); continue; }
-    // 整組看不懂：退回逐塊判斷，只收正常字級的
-    let any=false;
-    for(const pc of g){ const q=parseChord(pc.text); if(q&&pc.h>H*0.85){ any=true; out.push({x:pc.x,y:pc.y,w:pc.w,h:pc.h,text:pc.text,p:q,conf:pc.conf??100,src,baseH:pc.h}); } }
-    // 疑似和弦：A–G 開頭、後面接的不像英文單字（排除 Ben、Chorus、Asia 這類）
+    // 整組看不懂：只有確實併進了兩個以上正常字級的根音（兩個和弦黏在一起）才拆開逐塊判斷；
+    // 否則整組標成疑似（如原譜寫錯的 G7/#Bb，不能只留下開頭的 G）
     const nt=normChordText(text);
+    const roots=g.filter(pc=>/^[A-G]/.test(pc.text)&&pc.h>H*0.85);
+    let any=false;
+    if(roots.length>=2){
+      for(const pc of roots){ const q=parseChord(pc.text); if(q){ any=true; out.push({x:pc.x,y:pc.y,w:pc.w,h:pc.h,text:pc.text,p:q,conf:pc.conf??100,src,baseH:pc.h}); } }
+    }
     if(!any&&nt.length<=9&&/^[A-G][#b]?(?:$|[^a-zA-Z]|M(?![A-Z])|m(?![a-z]{2})|maj|min|sus|add|dim|aug)/.test(nt)) out.push({...box, text, p:null, conf, src, baseH:main.h});
   }
   return out;
@@ -424,28 +436,65 @@ function assemble(g,H){
   const sl=body.search(/\/[A-G]/);
   return sl>=0? body.slice(0,sl)+tail+body.slice(sl) : body+tail;
 }
-/* 行層級過濾：同一行大多是英文單字（英文歌詞）時，不把 A、Am 這類字當和弦；Key／Capo 行略過 */
-function lineFilter(cands, words){
-  const lines=[];
-  for(const c of cands){
-    const cy=c.y+c.h/2;
-    let L=lines.find(l=>Math.abs(l.cy-cy)<Math.max(l.h,c.h)*0.7);
-    if(!L){ L={cy,h:c.h,items:[]}; lines.push(L); }
-    L.items.push(c);
+/* ================= 整行分類：和弦行／歌詞與歌名／段落標籤／資訊 =================
+   只有「和弦行」裡的和弦會被採用。同一行若有大空隙（如左右兩欄）先拆段，各段分別判斷。 */
+const SECTION_RE=/^(intro|verse|pre-?chorus|prechorus|pre|chorus|bridge|outro|tag|interlude|instrumental|channel|ending|end|coda|refrain|turnaround|vamp|breakdown|hook|solo|前奏|主歌|導歌|副歌|橋段|間奏|尾奏|結尾|第.段)/i;
+const INFO_RE=/^(key|bpm|time|tempo|capo|written|words|music|lyrics?|lyricist|composer|arr|arranged|ccli|copyright|publishing|admin|rights|reserved|permission|used)\b|©|詞|曲|編曲|原調|調性|版權|授權|速度|拍號/i;
+const IGNORE_RE=/^(?:[|:\/\-–—.,;x×\d%()+*~]+|\(?\d+x\)?|\(?x\d+\)?)$/i;
+const CJK_RE=/[\u3400-\u9fff\uF900-\uFAFF]/;
+function classifyLines(words, cands, pageW){
+  // 1. 分行：中心點夠近才算同一行（和弦行常緊貼歌詞行；OCR 的字框又常偏大，不能只看重疊）
+  const rows=[];
+  words=words.filter(w=>w.conf===undefined||w.conf>=40);   // OCR 亂碼（把和弦讀成中文等）不參與分行
+  for(const w of [...words].sort((a,b)=>b.h-a.h)){
+    const cy=w.y+w.h/2;
+    const R=rows.find(r=>Math.abs(cy-(r.top+r.bot)/2)<Math.min(r.h,w.h)*0.4);
+    if(!R){ rows.push({top:w.y,bot:w.y+w.h,h:w.h,words:[w]}); continue; }
+    R.words.push(w);
   }
-  const keep=[], sus=[];
-  for(const L of lines){
-    const ws=words.filter(w=>Math.abs(w.y+w.h/2-L.cy)<L.h*0.7);
-    const keyLine=ws.some(w=>/^(key|capo|bpm|tempo|原調|調性)/i.test(w.text));
-    const english=ws.filter(w=>/^[A-Za-z]{3,}$/.test(w.text)&&!parseChord(w.text)).length;
-    const chords=L.items.filter(c=>c.p).length;
-    for(const c of L.items){
-      if(keyLine&&c.p){ continue; }
-      if(c.p&&english>=3&&english>chords){ sus.push({...c,p:null}); continue; }
-      (c.p?keep:sus).push(c);
+  // 2. 拆段：同一行內間距超過頁寬 8% 就分段
+  const segs=[];
+  for(const R of rows){
+    R.words.sort((a,b)=>a.x-b.x);
+    let S0=null;
+    for(const w of R.words){
+      if(!S0||w.x-S0.x1>pageW*0.08){ S0={row:R,x0:w.x,x1:w.x+w.w,words:[]}; segs.push(S0); }
+      S0.words.push(w); S0.x1=Math.max(S0.x1,w.x+w.w);
     }
   }
-  return {keep, sus};
+  // 3. 候選和弦與段的對應：和弦框碰到哪些段的字，就屬於那些段（上下標自成一行時也不會跑掉）
+  const inter=(w,c)=>{ const ix=Math.min(w.x+w.w,c.x+c.w)-Math.max(w.x,c.x), iy=Math.min(w.y+w.h,c.y+c.h)-Math.max(w.y,c.y); return ix>0&&iy>0?ix*iy:0; };
+  const covered=(w,cs)=>cs.some(c=>inter(w,c)>=w.w*w.h*0.4);
+  const segsOf=new Map(cands.map(c=>[c,segs.filter(g=>g.words.some(w=>inter(w,c)>0))]));
+  // 4. 分類
+  const kind=new Map();
+  for(const g of segs){
+    const cs=cands.filter(c=>segsOf.get(c).includes(g));   // 含讀不懂但像和弦的候選，一樣算和弦字
+    const toks=g.words.map(w=>({w,t:normChordText(w.text).replace(/\|/g,'')})).filter(o=>o.t&&!IGNORE_RE.test(o.t));
+    if(!toks.length){ kind.set(g,'other'); continue; }
+    if(toks.some(o=>INFO_RE.test(o.t))){ kind.set(g,'info'); continue; }
+    let body=toks;
+    const label=SECTION_RE.test(toks[0].t)&&!covered(toks[0].w,cs);
+    if(label) body=toks.slice(1).filter(o=>!/^\(?\d*x?\d*\)?$/i.test(o.t)&&!/^\d+$/.test(o.t));
+    const cov=body.filter(o=>covered(o.w,cs)).length, un=body.length-cov;
+    const cjk=body.some(o=>!covered(o.w,cs)&&CJK_RE.test(o.t));
+    if(cs.length&&cov>0&&cov>=un&&!cjk) kind.set(g,'chord');
+    else kind.set(g,label?'section':'lyric');
+  }
+  // 資訊行後面緊接的短段（如 Key: 之後的 G#）也算資訊
+  for(const g of segs){
+    if(kind.get(g)!=='chord')continue;
+    const prev=segs.filter(o=>o.row===g.row&&o.x1<=g.x0).sort((a,b)=>b.x1-a.x1)[0];
+    if(prev&&kind.get(prev)==='info'&&g.x0-prev.x1<pageW*0.2&&g.words.length<=3) kind.set(g,'info');
+  }
+  const keep=[], sus=[];
+  for(const c of cands){
+    const gs=segsOf.get(c);
+    if(!gs.length){ if(c.p)keep.push({...c,conf:Math.min(c.conf,60)}); continue; }   // 沒碰到任何字（OCR 第一輪沒讀到）：保留但標沒把握
+    if(gs.some(g=>kind.get(g)==='info'))continue;
+    if(gs.some(g=>kind.get(g)==='chord'))(c.p?keep:sus).push(c);
+  }
+  return {keep, sus, segs, kind};
 }
 
 /* ================= 擷取二：圖片辨識（兩輪 OCR） ================= */
@@ -515,15 +564,12 @@ async function handleFile(f){
         await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
         const P={canvas:cv, idx:S.pages.length}; S.pages.push(P);
         const {glyphs,guessRatio}=await pdfGlyphs(page,vp);
-        const {pieces,seps,plain}=glyphsToPieces(glyphs);
+        const {pieces,seps,words:allWords,plain}=glyphsToPieces(glyphs);
         P.seps=seps.slice();
         fullText+=plain+'\n';
-        const words=plain.split(/\s+/).filter(Boolean).map(t=>({text:t,x:0,y:-1e9,w:0,h:0}));
-        // 字形位置當作單字清單，給行過濾用
-        const pw=pieces.map(p=>({text:p.text,x:p.x,y:p.y,w:p.w,h:p.h}));
         const trusted=guessRatio<0.2||/intro|verse|chorus|bridge|key|tag|interlude|outro|bpm/i.test(plain);
         let cands=mergePieces(pieces.map(p=>({...p,conf:trusted?100:60})),seps,'pdf');
-        let {keep,sus}=lineFilter(cands,pw.concat(words));
+        let {keep,sus}=classifyLines(allWords,cands,cv.width);
         // 文字層抽不到足夠和弦 → 改用圖片辨識，結果合併
         if(keep.length<4){
           const big=document.createElement('canvas');
@@ -533,7 +579,7 @@ async function handleFile(f){
           fullText+=o.text;
           const sc=0.5, map=p=>({...p,x:p.x*sc,y:p.y*sc,w:p.w*sc,h:p.h*sc});
           const oc=mergePieces(o.pieces.map(map),o.seps.map(map),'ocr');
-          const lf=lineFilter(oc,o.words.map(map));
+          const lf=classifyLines(o.words.map(map).concat(o.pieces.map(map)),oc,cv.width);
           P.seps=P.seps.concat(o.seps.map(map));
           keep=dedupe(keep.concat(lf.keep)); sus=sus.concat(lf.sus);
         }
@@ -554,13 +600,20 @@ async function handleFile(f){
       fullText=o.text;
       const k=cv.width/big.width, map=p=>({...p,x:p.x*k,y:p.y*k,w:p.w*k,h:p.h*k});
       const oc=mergePieces(o.pieces.map(map),o.seps.map(map),'ocr');
-      const lf=lineFilter(oc,o.words.map(map));
+      const lf=classifyLines(o.words.map(map).concat(o.pieces.map(map)),oc,cv.width);
       P.seps=o.seps.map(map);
       addResults(P,dedupe(lf.keep),lf.sus);
     }
     // 調性
-    const kt=keyFromText(fullText);
-    if(kt){ S.key=kt.key; S.keyName=kt.name; S.mode=kt.mode; S.keySrc=`依譜上標示的調性`; }
+    let kt=keyFromText(fullText);
+    if(kt){
+      // 譜上寫 G#、和弦卻全用降記號（Ab、Eb）時，調名改用同音的降記號拼法，級數才不會拼錯
+      const flats=S.chords.filter(c=>/^[A-G]b/.test(c.text)).length, sharps=S.chords.filter(c=>/^[A-G]#/.test(c.text)).length;
+      const want=flats>sharps?'b':sharps>flats?'#':null, orig=kt.name;
+      if(want&&!kt.name.includes(want)&&kt.name.length>1){ const alt=KEY_NAMES.find(n=>n!==kt.name&&pcOf(n)===kt.key&&n.includes(want)); if(alt)kt={...kt,name:alt}; }
+      S.key=kt.key; S.keyName=kt.name; S.mode=kt.mode;
+      S.keySrc=kt.name===orig?'依譜上標示的調性':`譜上標示 ${orig}，依和弦寫法改拼成 ${kt.name}`;
+    }
     else{ const kc=keyFromChords(S.chords.map(c=>c.p)); if(kc){ S.key=kc.key; S.keyName=kc.name; S.mode='major'; S.keySrc='譜上沒寫調性，依和弦推測，請確認'; } }
     $('textArea').hidden=true; $('imgArea').hidden=false; $('ctrl').hidden=false;
     syncKeyUI(); renderAll();
