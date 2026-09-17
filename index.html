@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#F5F2EC">
+<meta name="description" content="上傳和弦譜 PDF、照片或文字，自動找出和弦並轉成數字或羅馬級數譜，可逐一核對修改、下載成品圖。">
+<meta property="og:title" content="和弦譜轉級數">
+<meta property="og:description" content="上傳和弦譜，自動轉成級數譜，可核對修改與下載。">
+<title>和弦譜轉級數</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23B5543B'/><text x='50' y='68' font-size='46' font-family='Georgia' fill='white' text-anchor='middle'>1·4</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F5F2EC; --card:#FDFCF9; --card2:#F0EBE0; --line:#E3DDD0;
+  --text:#3A3A3A; --dim:#8C8678;
+  --accent:#7A94A8; --accent-deep:#5E7A8F;
+  --deg:#B5543B;
+  --ok:#5E9A6E; --warn:#D99A2B; --miss:#C0563F; --man:#4F7FB8;
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+html{-webkit-text-size-adjust:100%;}
+body{background:var(--bg); color:var(--text); font-family:'DM Sans',-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif; line-height:1.5;}
+header{padding:14px 20px; border-bottom:1px solid var(--line); background:#F5F2ECf2; position:sticky; top:0; z-index:20; backdrop-filter:blur(8px);}
+h1{font-size:19px; font-weight:700; letter-spacing:.3px;}
+main{padding:16px 20px 60px; max-width:1500px; margin:0 auto;}
+.panel{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin-bottom:14px;}
+.row{display:flex; flex-wrap:wrap; gap:10px; align-items:center;}
+.hint{color:var(--dim); font-size:12.5px; line-height:1.7;}
+.btn{display:inline-flex; align-items:center; gap:6px; background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:9px 15px; cursor:pointer; font-size:14px; font-family:inherit; transition:all .15s; user-select:none; touch-action:manipulation;}
+.btn:hover{border-color:var(--accent); color:var(--accent-deep);}
+.btn:active{transform:scale(.96);}
+.btn.primary{background:var(--accent-deep); border-color:var(--accent-deep); color:#fff; font-weight:700; font-size:15px; padding:11px 20px;}
+.btn.primary:hover{background:#4d6778; color:#fff;}
+.btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+.btn[disabled]{opacity:.45; pointer-events:none;}
+.seg{display:inline-flex; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:var(--card);}
+.seg button{background:transparent; color:var(--dim); border:none; padding:8px 13px; cursor:pointer; font-size:13px; font-family:inherit;}
+.seg button.active{background:var(--accent-deep); color:#fff; font-weight:600;}
+select,input[type=text],textarea{background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:8px 10px; font-size:16px; font-family:inherit;}
+label.lab{font-size:13px; font-weight:700; color:var(--accent-deep);}
+.drop{border:2px dashed var(--line); border-radius:14px; padding:18px 16px; text-align:center; transition:border-color .15s, background .15s;}
+.drop .row{justify-content:center;}
+.drop .dz{font-size:13.5px; color:var(--dim); margin-top:8px;}
+body.dragging .drop{border-color:var(--accent-deep); background:#E9EEF2;}
+body.dragging .drop .dz{color:var(--accent-deep); font-weight:700;}
+#status{font-size:13.5px; white-space:pre-line; margin-top:10px; display:none; padding:9px 12px; border-radius:10px; background:var(--card2);}
+#status.err{background:#F6E1DA; color:#8A3B28;}
+.summary{display:flex; flex-wrap:wrap; gap:8px; margin-top:4px;}
+.pill{display:inline-flex; align-items:center; gap:6px; font-size:13px; padding:4px 10px; border-radius:999px; background:var(--card2);}
+.dot{width:10px; height:10px; border-radius:3px; display:inline-block; border:2px solid currentColor;}
+.dot.ok{color:var(--ok);} .dot.warn{color:var(--warn);} .dot.miss{color:var(--miss); border-style:dashed;} .dot.man{color:var(--man);}
+.views{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+.views.single{grid-template-columns:1fr;}
+.views .col[hidden]{display:none;}
+.cap{font-size:13px; font-weight:700; color:var(--accent-deep); margin:0 0 6px;}
+.page{position:relative; margin-bottom:12px; background:#fff; border:1px solid var(--line); border-radius:8px; overflow:hidden;}
+.page canvas{display:block; width:100%; height:auto; cursor:crosshair; touch-action:manipulation;}
+.chips{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;}
+.chip{font-size:15px; padding:5px 10px; border-radius:8px; background:var(--card2); border:1px solid var(--line); cursor:pointer; font-family:inherit;}
+.chip b{font-weight:700;} .chip .d{color:var(--deg); font-weight:700;}
+.chip.warn{border-color:var(--warn); background:#FBF1DE;} .chip.man{border-color:var(--man);} .chip.miss{border-style:dashed; border-color:var(--miss); background:#FBEAE5;}
+.linehead{font-size:12px; color:var(--dim); width:100%; margin-top:6px;}
+#pop{position:fixed; z-index:50; background:var(--card); border:1px solid var(--line); border-radius:12px; box-shadow:0 8px 28px #0002; padding:12px; width:260px; display:none;}
+#pop .t{font-size:13px; color:var(--dim); margin-bottom:6px;}
+#pop input{width:100%; margin-bottom:6px;}
+#pop .prev{font-size:14px; min-height:22px; margin-bottom:8px;}
+#pop .prev.bad{color:var(--miss);}
+#textOut{white-space:pre; font-family:ui-monospace,Menlo,"PingFang TC",monospace; font-size:14px; overflow:auto; background:#fff; border:1px solid var(--line); border-radius:8px; padding:12px; min-height:120px;}
+#textOut .dg{color:var(--deg); font-weight:700;}
+textarea{width:100%; min-height:220px; font-family:ui-monospace,Menlo,"PingFang TC",monospace; font-size:14px;}
+@media (max-width:820px){
+  main{padding:12px 12px 60px;} header{padding:12px;}
+  .views{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+<header><h1>和弦譜轉級數</h1></header>
+<main>
+  <div class="panel">
+    <div class="drop" id="dropZone">
+      <div class="row">
+        <label class="btn primary" id="upBtn" role="button" tabindex="0">上傳和弦譜（PDF／照片／txt）<input type="file" id="fileIn" accept=".pdf,image/*,.txt,.cho,.chopro,.crd,.md" hidden></label>
+        <button class="btn" id="pasteBtn">改用貼上文字</button>
+      </div>
+      <div class="dz" id="dzText">或把檔案拖曳到這個框裡</div>
+    </div>
+    <div class="hint" style="margin-top:8px">流程：上傳 → 自動找和弦 → 在「核對」圖上看框，<b>橘框是沒把握的、紅色虛線是疑似漏抓</b>，點一下就能修改；完全沒框到的和弦，直接在圖上點它的位置補上。</div>
+    <div id="status"></div>
+  </div>
+
+  <div class="panel" id="ctrl" hidden>
+    <div class="row">
+      <label class="lab">調性</label>
+      <select id="keySel"></select>
+      <div class="seg" id="modeSeg"><button data-v="major" class="active">大調</button><button data-v="minor">小調</button></div>
+      <span class="hint" id="keyNote"></span>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label class="lab">格式</label>
+      <div class="seg" id="fmtSeg"><button data-v="num" class="active">數字</button><button data-v="roman">羅馬</button></div>
+      <label class="lab" style="margin-left:6px">顯示</label>
+      <div class="seg" id="viewSeg"><button data-v="both" class="active">並排</button><button data-v="check">核對</button><button data-v="out">成品</button></div>
+      <button class="btn" id="dlPng">下載成品圖</button>
+      <button class="btn" id="copyTxt">複製級數清單</button>
+    </div>
+    <div class="summary" id="summary"></div>
+  </div>
+
+  <div id="imgArea" hidden>
+    <div class="views" id="views">
+      <div class="col" id="colCheck"><div class="cap">核對（點框修改，點空白處補和弦）</div><div id="pagesCheck"></div></div>
+      <div class="col" id="colOut"><div class="cap">級數成品</div><div id="pagesOut"></div></div>
+    </div>
+    <div class="panel" style="margin-top:4px">
+      <div class="cap">和弦對照（依行排列，點一下可修改）</div>
+      <div id="list"></div>
+    </div>
+  </div>
+
+  <div id="textArea" hidden>
+    <div class="panel">
+      <div class="cap">貼上和弦譜文字（和弦在歌詞上一行，或 ChordPro 的 [C] 格式）</div>
+      <textarea id="srcText" placeholder="C        G/B      Am&#10;夜空中的星星輕輕閃爍"></textarea>
+    </div>
+    <div class="panel"><div class="cap">級數譜</div><div id="textOut"></div></div>
+  </div>
+</main>
+
+<div id="pop">
+  <div class="t" id="popTitle">修改和弦</div>
+  <input type="text" id="popIn" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="例如 GMaj7、A/C#">
+  <div class="prev" id="popPrev"></div>
+  <div class="row">
+    <button class="btn primary" id="popOk" style="padding:7px 14px;font-size:14px">確定</button>
+    <button class="btn" id="popDel">刪除</button>
+    <button class="btn" id="popCancel">取消</button>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const PDFJS='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+const PDFJS_DIST='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/';
+const TESS='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+
+/* ================= 樂理核心 ================= */
+const LET={C:0,D:2,E:4,F:5,G:7,A:9,B:11};
+const KEY_NAMES=['C','C#','Db','D','D#','Eb','E','F','F#','Gb','G','G#','Ab','A','A#','Bb','B'];
+const LETTERS='CDEFGAB';
+function pcOf(s){ let p=LET[s[0]]; for(const c of s.slice(1)){ if(c==='#')p++; else if(c==='b')p--; } return (p+12)%12; }
+const SUPMAP={'⁰':'0','¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9','₀':'0','₁':'1','₂':'2','₃':'3','₄':'4','₅':'5','₆':'6','₇':'7','₈':'8','₉':'9'};
+function normChordText(t){
+  return t.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹₀-₉]/g,c=>SUPMAP[c]).replace(/[♯＃]/g,'#').replace(/♭/g,'b')
+    .replace(/／/g,'/').replace(/（/g,'(').replace(/）/g,')').replace(/[Δ△]/g,'maj').replace(/[º°]/g,'dim').replace(/\s+/g,'');
+}
+const QUAL_OK=/^(?:maj|Maj|MAJ|M|min|mi|m|-|dim|aug|\+|sus|add|no|omit|alt|ø|[0-9]|#|b|\(|\)|,|\/(?=[0-9]))*$/;
+/* 解析和弦：回傳 {root, minor, rest, bass} 或 null */
+function parseChord(raw){
+  const t=normChordText(raw);
+  const m=t.match(/^([A-G][#b]?)(.*?)(?:\/([A-G][#b]?))?$/);
+  if(!m)return null;
+  let q=m[2]||'';
+  if(!QUAL_OK.test(q))return null;
+  if(/[(]/.test(q)!==/[)]/.test(q))return null;
+  let minor=false;
+  if(/^(maj|Maj|MAJ)/.test(q)) q='maj'+q.slice(3);
+  else if(/^M(?!aj)/.test(q)) q='maj'+q.slice(1);
+  else if(/^(min|mi|m|-)/.test(q)){ minor=true; q=q.replace(/^(min|mi|m|-)/,''); }
+  if(q==='maj')q='';
+  q=q.replace(/^ø7?/,()=>{minor=true; return '7b5';});
+  q=q.replace(/\(([#b][0-9]+)\)/g,'$1');         // m7(b5) → m7b5
+  q=q.replace(/sus(?![0-9])/,'sus4');
+  if(q==='2')q='add9';                          // D2 記為 add9
+  if(q==='+')q='aug';
+  return {root:pcOf(m[1]), rootL:m[1][0], minor, rest:q, bass:m[3]?pcOf(m[3]):null, bassL:m[3]?m[3][0]:null, text:t};
+}
+const STEPS={major:[0,2,4,5,7,9,11], minor:[0,2,3,5,7,8,10]};
+const ROMAN=['I','II','III','IV','V','VI','VII'];
+const S={ keyName:'C', key:0, mode:'major', keySrc:'', keyTouched:false, fmt:'num', view:'both', pages:[], chords:[], suspects:[], nextId:1 };
+/* 依音名算級數：先數字母距離，再比半音決定升降（D 大調的 A# 是 #5，Bb 是 b6） */
+function degOf(pc,letter){
+  const num=(LETTERS.indexOf(letter)-LETTERS.indexOf(S.keyName[0])+7)%7;
+  const diff=((pc-S.key-STEPS[S.mode][num])%12+18)%12-6;
+  return (diff>0?'#'.repeat(diff):'b'.repeat(-diff))+(num+1);
+}
+/* 回傳 {main, sup, bass}：main=級數(＋m)，sup=和弦性質，bass=/低音級數 */
+function degreeParts(p){
+  const d=degOf(p.root,p.rootL);
+  let main, sup=p.rest;
+  if(S.fmt==='num'){ main=d+(p.minor?'m':''); }
+  else{
+    const acc=d.match(/^[#b]*/)[0], n=+d.replace(/[#b]/g,'');
+    main=acc+(p.minor?ROMAN[n-1].toLowerCase():ROMAN[n-1]);
+  }
+  return {main, sup, bass:p.bass!==null?'/'+degOf(p.bass,p.bassL):''};
+}
+const SUPD={'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹'};
+/* 純文字：性質以數字開頭時用上標數字，避免 1 加 7 讀成 17 */
+function degreeText(p){ const x=degreeParts(p); return x.main+(/[0-9]$/.test(x.main)&&/^[0-9]/.test(x.sup)?x.sup.replace(/[0-9]/g,d=>SUPD[d]):x.sup)+x.bass; }
+
+/* ---- 調性判斷：先找譜上寫的 Key，其次用和弦分布估計 ---- */
+function keyFromText(txt){
+  const m=txt.match(/(?:\bkey\b|原調|調性|調)\s*(?:of)?\s*[:：=]?\s*([A-G])\s*([#b♯♭]?)\s*(m(?!aj)|min)?/i);
+  if(!m)return null;
+  const name=m[1]+normChordText(m[2]||'');
+  return {key:pcOf(name), name, mode:m[3]?'minor':'major'};
+}
+function keyFromChords(list){
+  if(!list.length)return null;
+  const MAJ={0:'M',2:'m',4:'m',5:'M',7:'M',9:'m',11:'d'};
+  let best=null;
+  for(let k=0;k<12;k++){
+    let s=0;
+    list.forEach((p,i)=>{
+      const off=(p.root-k+12)%12;
+      if(off in MAJ){ s+=1; if((MAJ[off]==='m')===p.minor)s+=1; }
+      if(p.bass!==null&&((p.bass-k+12)%12) in MAJ)s+=.3;
+      if(i===0&&off===0)s+=2;
+    });
+    if(!best||s>best.s)best={key:k,s};
+  }
+  // 拼法：依和弦裡升記號多還是降記號多
+  const flats=list.filter(p=>/^[A-G]b/.test(p.text)).length, sharps=list.filter(p=>/^[A-G]#/.test(p.text)).length;
+  const cands=KEY_NAMES.filter(n=>pcOf(n)===best.key);
+  const name=cands.length===1?cands[0]:(flats>sharps?cands.find(n=>n.includes('b')):cands.find(n=>n.includes('#')))||cands[0];
+  return {key:best.key, name, mode:'major'};
+}
+
+/* ================= 共用：外部元件載入 ================= */
+const _sc={};
+function loadScript(src){
+  return _sc[src]??=new Promise((res,rej)=>{
+    const s=document.createElement('script'); s.src=src; s.onload=res;
+    s.onerror=()=>{ delete _sc[src]; rej(new Error('元件載入失敗，請確認網路連線')); };
+    document.head.appendChild(s);
+  });
+}
+function status(msg,err){ const el=$('status'); if(!msg){el.style.display='none';return;} el.style.display='block'; el.className=err?'err':''; el.textContent=msg; }
+
+/* ================= 擷取一：PDF 逐字讀取（含無 Unicode 對照的字型） ================= */
+const GLYPH_NAMES={space:' ',numbersign:'#',slash:'/',parenleft:'(',parenright:')',plus:'+',hyphen:'-',minus:'-',bar:'|',
+  zero:'0',one:'1',two:'2',three:'3',four:'4',five:'5',six:'6',seven:'7',eight:'8',nine:'9',
+  onesuperior:'1',twosuperior:'2',threesuperior:'3',foursuperior:'4',fivesuperior:'5',sixsuperior:'6',sevensuperior:'7',eightsuperior:'8',ninesuperior:'9',
+  sharp:'#',flat:'b',musicsharpsign:'#',musicflatsign:'b',degree:'°',colon:':',comma:',',period:'.',ampersand:'&',at:'@'};
+/* Adobe 西文字型常見字形順序（由約書亞譜〈瞳人〉〈永遠不離開〉實測）：
+   gid 1–58 = ASCII−31、64–91 = ASCII−33；上標數字 395–404 = 0–9、下標數字 412–421 = 0–9；上標括號 410、411 */
+const GID_SPECIAL={327:'4',334:'b',410:'(',411:')',456:'#'};
+function glyphNameChar(name){
+  if(!name)return null;
+  let m=/^gid(\d+)$/.exec(name);
+  if(m){ const g=+m[1];
+    if(g>=1&&g<=58)return {ch:String.fromCharCode(g+31), guess:true};
+    if(g>=64&&g<=91)return {ch:String.fromCharCode(g+33), guess:true};
+    if(g in GID_SPECIAL)return {ch:GID_SPECIAL[g], guess:true};
+    if(g>=395&&g<=404)return {ch:String(g-395), guess:true};
+    if(g>=412&&g<=421)return {ch:String(g-412), guess:true};
+    return null; }
+  m=/^uni([0-9A-Fa-f]{4})/.exec(name); if(m)return {ch:normChordText(String.fromCharCode(parseInt(m[1],16)))};
+  const base=name.split('.')[0];
+  if(base.length===1)return {ch:base};
+  if(base in GLYPH_NAMES)return {ch:GLYPH_NAMES[base]};
+  return null;
+}
+async function pdfGlyphs(page, vp){
+  const ol=await page.getOperatorList();
+  const O=pdfjsLib.OPS, U=pdfjsLib.Util;
+  let st={ctm:[1,0,0,1,0,0], font:null, size:1, dir:1, hs:1, cs:0, ws:0, rise:0, lead:0, tm:[1,0,0,1,0,0], x:0, y:0, lx:0, ly:0};
+  const stack=[], out=[]; let guessed=0, total=0;
+  const clone=s=>({...s, ctm:s.ctm.slice(), tm:s.tm.slice()});
+  const moveText=(x,y)=>{ st.x=st.lx+=x; st.y=st.ly+=y; };
+  const showText=glyphs=>{
+    const f=st.font; if(!f||f.vertical)return;
+    const fm=f.fontMatrix||[0.001,0,0,0.001,0,0];
+    const adv=st.size*fm[0];
+    const M=U.transform(vp.transform, U.transform(st.ctm, st.tm));
+    let x=0;
+    for(const g of glyphs){
+      if(typeof g==='number'){ x+=-g*st.size/1000; continue; }
+      const w=(g.width||0)*adv;
+      let ch=g.unicode||'', guess=false;
+      // 字型帶字形名稱對照時優先用名稱：pdf.js 會把部分字碼當成空白或控制字元
+      const nm=f.differences&&f.differences[g.originalCharCode];
+      const r=nm?glyphNameChar(nm):null;
+      if(r){ ch=r.ch; guess=!!r.guess; }
+      else if(!ch||ch.charCodeAt(0)<32||ch==='�') ch='';
+      const x0=st.x+x*st.hs, x1=st.x+(x+w)*st.hs;
+      const p0=U.applyTransform([x0, st.y+st.rise-0.02*st.size], M);
+      const p1=U.applyTransform([x1, st.y+st.rise+0.72*st.size], M);
+      if(ch&&ch.trim()){ total++; if(guess)guessed++;
+        out.push({ch:normChordText(ch)||ch, x:Math.min(p0[0],p1[0]), y:Math.min(p0[1],p1[1]), w:Math.abs(p1[0]-p0[0]), h:Math.abs(p1[1]-p0[1])}); }
+      else out.push({ch:' ', x:Math.min(p0[0],p1[0]), y:Math.min(p0[1],p1[1]), w:Math.abs(p1[0]-p0[0]), h:Math.abs(p1[1]-p0[1])});
+      x+=w+((g.isSpace?st.ws:0)+st.cs)*st.dir;
+    }
+    st.x+=x*st.hs;
+    out.push({brk:true});
+  };
+  for(let i=0;i<ol.fnArray.length;i++){
+    const fn=ol.fnArray[i], a=ol.argsArray[i];
+    switch(fn){
+      case O.save: stack.push(clone(st)); break;
+      case O.restore: if(stack.length)st=stack.pop(); break;
+      case O.transform: st.ctm=U.transform(st.ctm,a); break;
+      case O.paintFormXObjectBegin: stack.push(clone(st)); if(a[0])st.ctm=U.transform(st.ctm,a[0]); break;
+      case O.paintFormXObjectEnd: if(stack.length)st=stack.pop(); break;
+      case O.beginText: st.tm=[1,0,0,1,0,0]; st.x=st.lx=0; st.y=st.ly=0; break;
+      case O.setFont: try{ st.font=page.commonObjs.get(a[0]); }catch(e){ st.font=null; }
+        st.dir=a[1]<0?-1:1; st.size=Math.abs(a[1]); break;
+      case O.setTextMatrix: st.tm=Array.from(a.length===6?a:a[0]); st.x=st.lx=0; st.y=st.ly=0; break;
+      case O.moveText: moveText(a[0],a[1]); break;
+      case O.setLeadingMoveText: st.lead=-a[1]; moveText(a[0],a[1]); break;
+      case O.setLeading: st.lead=a[0]; break;
+      case O.nextLine: moveText(0,-st.lead); break;
+      case O.setCharSpacing: st.cs=a[0]; break;
+      case O.setWordSpacing: st.ws=a[0]; break;
+      case O.setHScale: st.hs=a[0]/100; break;
+      case O.setTextRise: st.rise=a[0]; break;
+      case O.showText: case O.showSpacedText: showText(a[0]); break;
+      case O.nextLineShowText: moveText(0,-st.lead); showText(a[0]); break;
+      case O.nextLineSetSpacingShowText: st.ws=a[0]; st.cs=a[1]; moveText(0,-st.lead); showText(a[2]); break;
+    }
+  }
+  return {glyphs:out, guessRatio: total?guessed/total:0};
+}
+/* 字形串 → 字塊（遇空白、中文、| 、字級變化、間距過大就斷開） */
+const CHORDISH=/^[A-Za-z0-9#\/()+\-°ø,]$/;
+function glyphsToPieces(glyphs){
+  const pieces=[], seps=[], plain=[];
+  let cur=null;
+  const flush=()=>{ if(cur){ pieces.push(cur); cur=null; } };
+  for(const g of glyphs){
+    if(g.brk){ flush(); plain.push(' '); continue; }
+    plain.push(g.ch);
+    if(g.ch==='|'){ flush(); seps.push(g); continue; }
+    if(!CHORDISH.test(g.ch)){ flush(); continue; }
+    if(cur){
+      const gap=g.x-(cur.x+cur.w), sizeJump=Math.abs(g.h-cur.h)/Math.max(g.h,cur.h);
+      const sameLine=Math.abs((g.y+g.h/2)-(cur.y+cur.h/2))<cur.h*0.35;
+      if(gap>cur.h*0.25||gap<-cur.h*0.5||sizeJump>0.15||!sameLine) flush();
+    }
+    if(!cur) cur={text:g.ch, x:g.x, y:g.y, w:g.w, h:g.h};
+    else{ const x1=Math.max(cur.x+cur.w,g.x+g.w), y1=Math.max(cur.y+cur.h,g.y+g.h);
+      cur.text+=g.ch; cur.x=Math.min(cur.x,g.x); cur.y=Math.min(cur.y,g.y); cur.w=x1-cur.x; cur.h=y1-cur.y; }
+  }
+  flush();
+  return {pieces, seps, plain:plain.join('')};
+}
+
+/* ================= 共用：字塊合併成和弦（處理上標升降、下標 Maj7、括號） ================= */
+function mergePieces(pieces, seps, src){
+  const n=pieces.length, parent=[...Array(n).keys()];
+  const find=i=>parent[i]===i?i:(parent[i]=find(parent[i]));
+  const order=[...Array(n).keys()].sort((a,b)=>pieces[a].x-pieces[b].x);
+  for(let ii=0;ii<n;ii++){
+    const A=pieces[order[ii]];
+    for(let jj=ii+1;jj<n;jj++){
+      const B=pieces[order[jj]];
+      const H=Math.max(A.h,B.h), gap=B.x-(A.x+A.w);
+      if(gap>A.h*1.5)break;
+      if(gap<-H*0.8)continue;
+      const small=Math.min(A.h,B.h)/H<0.85;
+      // 上下標：升降記號、數字、括號、和弦性質字塊可以偏離基線
+      const deco=p=>/^(?:[#b0-9()+]+|(?:maj|Maj|sus|add|dim|aug|m|min)[0-9]*)$/.test(p.text);
+      const shifted=small||deco(B)||deco(A);
+      // 斜線低音（如 Em9 /C）常和前一個和弦隔一點距離
+      const slashBass=/^\/[A-G]?/.test(B.text)&&/[A-Za-z0-9#)]$/.test(A.text);
+      if(gap>H*(slashBass?1.3:shifted?0.45:0.22))continue;
+      const big=A.h>=B.h?A:B, sm=A.h>=B.h?B:A, cy=sm.y+sm.h/2;
+      if(cy<big.y-big.h*0.6||cy>big.y+big.h*1.6)continue;
+      if(!shifted&&Math.abs((A.y+A.h/2)-(B.y+B.h/2))>H*0.3)continue;
+      // 右邊字塊是新的根音（A–G 開頭且左邊不是 /）就是下一個和弦，不併
+      if(/^[A-G]/.test(B.text)&&!/\/$/.test(A.text))continue;
+      const mid=(A.x+A.w+B.x)/2;
+      if(seps.some(s=>s.x<=mid+s.w&&s.x+s.w>=mid-s.w&&s.y<big.y+big.h&&s.y+s.h>big.y))continue;
+      parent[find(order[jj])]=find(order[ii]);
+    }
+  }
+  const groups={};
+  for(let i=0;i<n;i++)(groups[find(i)]??=[]).push(pieces[i]);
+  const out=[];
+  for(const g of Object.values(groups)){
+    const H=Math.max(...g.map(p=>p.h));
+    const text=assemble(g,H);
+    const box={x:Math.min(...g.map(p=>p.x)), y:Math.min(...g.map(p=>p.y))};
+    box.w=Math.max(...g.map(p=>p.x+p.w))-box.x; box.h=Math.max(...g.map(p=>p.y+p.h))-box.y;
+    const conf=Math.min(...g.map(p=>p.conf??100));
+    const main=g.reduce((a,b)=>b.h>a.h?b:a);
+    // 括號包住的和弦，如 (Gm6/A)：去掉外圍括號再解析
+    const bare=text.replace(/^[(\[]+/,'').replace(/[)\]]+$/,'');
+    const p=parseChord(text)||(bare!==text?parseChord(bare):null);
+    if(p){ const wrap=bare!==text&&!parseChord(text)?[text.match(/^[(\[]*/)[0],text.match(/[)\]]*$/)[0]]:null;
+      out.push({...box, text:p.text, p, conf, src, baseH:main.h, wrap}); continue; }
+    // 整組看不懂：退回逐塊判斷，只收正常字級的
+    let any=false;
+    for(const pc of g){ const q=parseChord(pc.text); if(q&&pc.h>H*0.85){ any=true; out.push({x:pc.x,y:pc.y,w:pc.w,h:pc.h,text:pc.text,p:q,conf:pc.conf??100,src,baseH:pc.h}); } }
+    // 疑似和弦：A–G 開頭、後面接的不像英文單字（排除 Ben、Chorus、Asia 這類）
+    const nt=normChordText(text);
+    if(!any&&nt.length<=9&&/^[A-G][#b]?(?:$|[^a-zA-Z]|M(?![A-Z])|m(?![a-z]{2})|maj|min|sus|add|dim|aug)/.test(nt)) out.push({...box, text, p:null, conf, src, baseH:main.h});
+  }
+  return out;
+}
+/* 把疊在一起的字塊排成和弦字串：
+   逐字依 x 排序，升降記號往左靠到前一個音名後面；括號那組（如上標 (b5)）整組放最後 */
+function assemble(g,H){
+  const open=g.find(p=>p.text.includes('(')), close=g.find(p=>p.text.includes(')'));
+  let paren=[];
+  if(open&&close&&open!==close){
+    const x0=open.x, x1=close.x+close.w;
+    // 以字塊頂端對齊括號判斷同一層（上標 (b5) 與下標 7 水平重疊，只能靠高度分開）
+    paren=g.filter(p=>p.x>=x0-1&&p.x+p.w<=x1+1&&/^[()#b0-9,]+$/.test(p.text)&&Math.abs(p.y-open.y)<open.h*0.4);
+  }
+  const chars=[];
+  for(const p of g){
+    if(paren.includes(p))continue;
+    const cw=p.w/Math.max(1,p.text.length);
+    [...p.text].forEach((c,i)=>{ const x=p.x+i*cw; chars.push({c, k:/^[#b]$/.test(c)&&p.text.length===1? x-H*0.35 : x}); });
+  }
+  chars.sort((a,b)=>a.k-b.k);
+  const tail=paren.sort((a,b)=>a.x-b.x).map(p=>p.text).join('');
+  const body=chars.map(c=>c.c).join('');
+  // 括號放在低音之前：D(#5)/G#
+  const sl=body.search(/\/[A-G]/);
+  return sl>=0? body.slice(0,sl)+tail+body.slice(sl) : body+tail;
+}
+/* 行層級過濾：同一行大多是英文單字（英文歌詞）時，不把 A、Am 這類字當和弦；Key／Capo 行略過 */
+function lineFilter(cands, words){
+  const lines=[];
+  for(const c of cands){
+    const cy=c.y+c.h/2;
+    let L=lines.find(l=>Math.abs(l.cy-cy)<Math.max(l.h,c.h)*0.7);
+    if(!L){ L={cy,h:c.h,items:[]}; lines.push(L); }
+    L.items.push(c);
+  }
+  const keep=[], sus=[];
+  for(const L of lines){
+    const ws=words.filter(w=>Math.abs(w.y+w.h/2-L.cy)<L.h*0.7);
+    const keyLine=ws.some(w=>/^(key|capo|bpm|tempo|原調|調性)/i.test(w.text));
+    const english=ws.filter(w=>/^[A-Za-z]{3,}$/.test(w.text)&&!parseChord(w.text)).length;
+    const chords=L.items.filter(c=>c.p).length;
+    for(const c of L.items){
+      if(keyLine&&c.p){ continue; }
+      if(c.p&&english>=3&&english>chords){ sus.push({...c,p:null}); continue; }
+      (c.p?keep:sus).push(c);
+    }
+  }
+  return {keep, sus};
+}
+
+/* ================= 擷取二：圖片辨識（兩輪 OCR） ================= */
+const _workers={};
+async function worker(lang){
+  await loadScript(TESS);
+  if(!_workers[lang]){
+    status(`下載辨識模型（${lang==='eng'?'英文':'繁中＋英文'}，首次使用需要一點時間）…`);
+    _workers[lang]=await Tesseract.createWorker(lang,1,{logger:m=>{ if(m.status==='recognizing text')status(`${_ocrLabel}… ${Math.round(m.progress*100)}%`); }});
+  }
+  return _workers[lang];
+}
+let _ocrLabel='';
+function wordsOf(data){
+  const ws=[];
+  (data.blocks||[]).forEach(b=>(b.paragraphs||[]).forEach(p=>(p.lines||[]).forEach(l=>(l.words||[]).forEach(w=>{
+    if(w.text&&w.text.trim()) ws.push({text:w.text.trim(), x:w.bbox.x0, y:w.bbox.y0, w:w.bbox.x1-w.bbox.x0, h:w.bbox.y1-w.bbox.y0, conf:w.confidence});
+  }))));
+  return ws;
+}
+async function ocrCanvas(canvas, pageLabel){
+  // 第一輪：繁中＋英文，找出歌詞位置與全文（找 Key 用）
+  const w1=await worker('chi_tra+eng');
+  _ocrLabel=`${pageLabel}辨識歌詞位置`;
+  await w1.setParameters({tessedit_pageseg_mode:'3'});
+  const r1=await w1.recognize(canvas,{},{blocks:true,text:true});
+  const words1=wordsOf(r1.data);
+  // 蓋掉中文字，避免被誤認成和弦
+  const masked=document.createElement('canvas'); masked.width=canvas.width; masked.height=canvas.height;
+  const g=masked.getContext('2d'); g.drawImage(canvas,0,0); g.fillStyle='#fff';
+  for(const w of words1) if(/[㐀-鿿豈-﫿]/.test(w.text)&&w.conf>20) g.fillRect(w.x-2,w.y-2,w.w+4,w.h+4);
+  // 第二輪：只認和弦字元、零散文字模式
+  const w2=await worker('eng');
+  _ocrLabel=`${pageLabel}辨識和弦`;
+  await w2.setParameters({tessedit_pageseg_mode:'11', tessedit_char_whitelist:'ABCDEFGabdegijmnosu0123456789#/()+-|', preserve_interword_spaces:'1'});
+  const r2=await w2.recognize(masked,{},{blocks:true});
+  const words2=wordsOf(r2.data);
+  const pieces=[], seps=[];
+  for(const w of words2){
+    const parts=w.text.split('|');
+    if(parts.length>1){ seps.push({x:w.x+w.w/2-1,y:w.y,w:2,h:w.h}); }
+    const t=parts.filter(Boolean).join('');
+    if(t) pieces.push({...w,text:t});
+  }
+  return {pieces, seps, words:words1, text:r1.data.text||''};
+}
+
+/* ================= 載入檔案 ================= */
+async function handleFile(f){
+  const isPdf=f.type==='application/pdf'||/\.pdf$/i.test(f.name);
+  const isImg=f.type.startsWith('image/')||/\.(jpe?g|png|webp|heic|bmp|gif)$/i.test(f.name);
+  try{
+    if(!isPdf&&!isImg){ showText((await f.text()).trim()); return; }
+    S.pages=[]; S.chords=[]; S.suspects=[]; S.keyTouched=false;
+    let fullText='';
+    if(isPdf){
+      status('載入 PDF 引擎…');
+      await loadScript(PDFJS+'pdf.min.js');
+      pdfjsLib.GlobalWorkerOptions.workerSrc=PDFJS+'pdf.worker.min.js';
+      const pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer(), cMapUrl:PDFJS_DIST+'cmaps/', cMapPacked:true, standardFontDataUrl:PDFJS_DIST+'standard_fonts/', fontExtraProperties:true}).promise;
+      const nP=Math.min(pdf.numPages,6);
+      for(let i=1;i<=nP;i++){
+        status(`讀取 PDF 第 ${i}/${nP} 頁…`);
+        const page=await pdf.getPage(i);
+        const vp=page.getViewport({scale:2});
+        const cv=document.createElement('canvas'); cv.width=vp.width; cv.height=vp.height;
+        await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+        const P={canvas:cv, idx:S.pages.length}; S.pages.push(P);
+        const {glyphs,guessRatio}=await pdfGlyphs(page,vp);
+        const {pieces,seps,plain}=glyphsToPieces(glyphs);
+        P.seps=seps.slice();
+        fullText+=plain+'\n';
+        const words=plain.split(/\s+/).filter(Boolean).map(t=>({text:t,x:0,y:-1e9,w:0,h:0}));
+        // 字形位置當作單字清單，給行過濾用
+        const pw=pieces.map(p=>({text:p.text,x:p.x,y:p.y,w:p.w,h:p.h}));
+        const trusted=guessRatio<0.2||/intro|verse|chorus|bridge|key|tag|interlude|outro|bpm/i.test(plain);
+        let cands=mergePieces(pieces.map(p=>({...p,conf:trusted?100:60})),seps,'pdf');
+        let {keep,sus}=lineFilter(cands,pw.concat(words));
+        // 文字層抽不到足夠和弦 → 改用圖片辨識，結果合併
+        if(keep.length<4){
+          const big=document.createElement('canvas');
+          const vp2=page.getViewport({scale:4}); big.width=vp2.width; big.height=vp2.height;
+          await page.render({canvasContext:big.getContext('2d'),viewport:vp2}).promise;
+          const o=await ocrCanvas(big,`第 ${i} 頁`);
+          fullText+=o.text;
+          const sc=0.5, map=p=>({...p,x:p.x*sc,y:p.y*sc,w:p.w*sc,h:p.h*sc});
+          const oc=mergePieces(o.pieces.map(map),o.seps.map(map),'ocr');
+          const lf=lineFilter(oc,o.words.map(map));
+          P.seps=P.seps.concat(o.seps.map(map));
+          keep=dedupe(keep.concat(lf.keep)); sus=sus.concat(lf.sus);
+        }
+        addResults(P,keep,sus);
+      }
+    }else{
+      status('讀取圖片…');
+      let bmp;
+      try{ bmp=await createImageBitmap(f); }catch(e){ throw new Error('這個瀏覽器讀不了此圖片格式（常見於 iPhone 的 HEIC），請改存成 JPG 或 PNG 再上傳'); }
+      const dispW=Math.min(1600,bmp.width), sc=dispW/bmp.width;
+      const cv=document.createElement('canvas'); cv.width=Math.round(bmp.width*sc); cv.height=Math.round(bmp.height*sc);
+      cv.getContext('2d').drawImage(bmp,0,0,cv.width,cv.height);
+      const ocrScale=Math.min(3,Math.max(1,2400/bmp.width));
+      const big=document.createElement('canvas'); big.width=Math.round(bmp.width*ocrScale); big.height=Math.round(bmp.height*ocrScale);
+      big.getContext('2d').drawImage(bmp,0,0,big.width,big.height);
+      const P={canvas:cv, idx:0}; S.pages.push(P);
+      const o=await ocrCanvas(big,'');
+      fullText=o.text;
+      const k=cv.width/big.width, map=p=>({...p,x:p.x*k,y:p.y*k,w:p.w*k,h:p.h*k});
+      const oc=mergePieces(o.pieces.map(map),o.seps.map(map),'ocr');
+      const lf=lineFilter(oc,o.words.map(map));
+      P.seps=o.seps.map(map);
+      addResults(P,dedupe(lf.keep),lf.sus);
+    }
+    // 調性
+    const kt=keyFromText(fullText);
+    if(kt){ S.key=kt.key; S.keyName=kt.name; S.mode=kt.mode; S.keySrc=`依譜上標示的調性`; }
+    else{ const kc=keyFromChords(S.chords.map(c=>c.p)); if(kc){ S.key=kc.key; S.keyName=kc.name; S.mode='major'; S.keySrc='譜上沒寫調性，依和弦推測，請確認'; } }
+    $('textArea').hidden=true; $('imgArea').hidden=false; $('ctrl').hidden=false;
+    syncKeyUI(); renderAll();
+    const nW=S.chords.filter(c=>c.status==='warn').length;
+    status(`完成：找到 ${S.chords.length} 個和弦${nW?`，其中 ${nW} 個沒把握（橘框）`:''}${S.suspects.length?`；另有 ${S.suspects.length} 處疑似和弦但看不懂（紅色虛線）`:''}。\n請對照原圖，沒被框到的和弦直接點它的位置補上。`);
+  }catch(err){ console.error(err); status('讀取失敗：'+err.message,true); }
+}
+function iou(a,b){ const x=Math.max(0,Math.min(a.x+a.w,b.x+b.w)-Math.max(a.x,b.x)), y=Math.max(0,Math.min(a.y+a.h,b.y+b.h)-Math.max(a.y,b.y)); const i=x*y; return i/(a.w*a.h+b.w*b.h-i||1); }
+function dedupe(list){ const out=[]; for(const c of list){ const d=out.find(o=>iou(o,c)>0.3); if(!d)out.push(c); else if((c.src==='pdf'&&d.src!=='pdf')||(c.src===d.src&&c.conf>d.conf)) out[out.indexOf(d)]=c; } return out; }
+function addResults(P,keep,sus){
+  for(const c of keep){
+    S.chords.push({id:S.nextId++, page:P.idx, x:c.x, y:c.y, w:c.w, h:c.h, baseH:c.baseH||c.h, text:c.p.text, p:c.p, wrap:c.wrap||null,
+      status: c.src==='pdf'&&c.conf>=100?'ok':(c.conf>=80?'ok':'warn'), src:c.src});
+  }
+  for(const c of sus){
+    if(S.chords.some(k=>k.page===P.idx&&iou(k,c)>0.2))continue;
+    S.suspects.push({id:S.nextId++, page:P.idx, x:c.x, y:c.y, w:c.w, h:c.h, baseH:c.baseH||c.h, text:normChordText(c.text)});
+  }
+}
+
+/* ================= 繪製 ================= */
+const COLORS={ok:'#5E9A6E', warn:'#D99A2B', man:'#4F7FB8', miss:'#C0563F'};
+function renderAll(){
+  const pc=$('pagesCheck'), po=$('pagesOut');
+  pc.innerHTML=''; po.innerHTML='';
+  for(const P of S.pages){
+    const a=drawCheck(P), b=drawOut(P);
+    for(const [cv,host] of [[a,pc],[b,po]]){
+      const wrap=document.createElement('div'); wrap.className='page'; wrap.appendChild(cv); host.appendChild(wrap);
+      cv.addEventListener('click',e=>onCanvasClick(e,P,cv));
+    }
+  }
+  renderList(); renderSummary(); applyView();
+}
+function drawCheck(P){
+  const c=document.createElement('canvas'); c.width=P.canvas.width; c.height=P.canvas.height;
+  const g=c.getContext('2d'); g.drawImage(P.canvas,0,0);
+  const lw=Math.max(2,c.width/500);
+  for(const s of S.suspects.filter(s=>s.page===P.idx)){
+    g.setLineDash([lw*3,lw*2]); g.strokeStyle=COLORS.miss; g.lineWidth=lw; g.strokeRect(s.x-3,s.y-3,s.w+6,s.h+6);
+  }
+  g.setLineDash([]);
+  for(const ch of S.chords.filter(x=>x.page===P.idx)){
+    g.strokeStyle=COLORS[ch.status]; g.lineWidth=lw;
+    g.fillStyle=COLORS[ch.status]+'22'; g.fillRect(ch.x-3,ch.y-3,ch.w+6,ch.h+6);
+    g.strokeRect(ch.x-3,ch.y-3,ch.w+6,ch.h+6);
+  }
+  return c;
+}
+function drawOut(P){
+  const c=document.createElement('canvas'); c.width=P.canvas.width; c.height=P.canvas.height;
+  const g=c.getContext('2d'); g.drawImage(P.canvas,0,0);
+  const src=P.canvas.getContext('2d');
+  for(const ch of S.chords.filter(x=>x.page===P.idx)){
+    // 底色：從原圖框外四周取樣，用最亮的點（避開小節線與相鄰文字）
+    let fill='#ffffff', best=-1;
+    const pad=Math.max(3,ch.h*0.18);
+    const pts=[[ch.x-pad,ch.y-pad],[ch.x+ch.w+pad,ch.y-pad],[ch.x-pad,ch.y+ch.h+pad],[ch.x+ch.w+pad,ch.y+ch.h+pad],[ch.x+ch.w/2,ch.y-pad],[ch.x+ch.w/2,ch.y+ch.h+pad]];
+    for(const [px,py] of pts){
+      try{ const d=src.getImageData(Math.max(0,Math.min(c.width-1,Math.round(px))),Math.max(0,Math.min(c.height-1,Math.round(py))),1,1).data;
+        const lum=d[0]+d[1]+d[2]; if(lum>best){ best=lum; fill=`rgb(${d[0]},${d[1]},${d[2]})`; } }catch(e){}
+    }
+    // 往下多蓋一點：j、g 這類字母的下伸部不在字框內
+    g.fillStyle=fill; g.fillRect(ch.x-pad*0.25,ch.y-pad*0.4,ch.w+pad*0.5,ch.h+pad*0.4+ch.baseH*0.3);
+    const parts=degreeParts(ch.p);
+    const fam='"DM Sans",Arial,sans-serif';
+    // 字級：原和弦的 1.6 倍，且不小於頁寬 1/55；太擠就縮，但不小於原和弦 1.15 倍
+    let fs=Math.max(ch.baseH*1.6, c.width/55);
+    const same=S.chords.filter(o=>o!==ch&&o.page===P.idx&&o.x>ch.x&&Math.abs((o.y+o.h/2)-(ch.y+ch.h/2))<Math.max(o.h,ch.h)*0.8);
+    // 右邊界：下一個和弦或下一條小節線，放大的字不能壓過去
+    const bars=(P.seps||[]).filter(b=>b.x>ch.x+ch.w*0.5&&b.y<ch.y+ch.h+ch.h*0.5&&b.y+b.h>ch.y-ch.h*0.5);
+    const nextX=Math.min(c.width-4, ...same.map(o=>o.x), ...bars.map(b=>b.x+b.w*0.3));
+    const room=nextX-ch.x-fs*0.2;
+    const measure=f=>{ g.font=`bold ${f}px ${fam}`; let w=g.measureText(parts.main+parts.bass).width; g.font=`bold ${f*0.72}px ${fam}`; return w+g.measureText(parts.sup).width; };
+    let W=measure(fs);
+    if(W>room){ fs=Math.max(ch.baseH*1.15, fs*room/W); W=measure(fs); }
+    const base=ch.y+ch.h;
+    let x=ch.x;
+    const draw=(t,f,y)=>{ g.font=`bold ${f}px ${fam}`; g.lineJoin='round'; g.lineWidth=f*0.22; g.strokeStyle=fill; g.strokeText(t,x,y); g.fillStyle='#B5543B'; g.fillText(t,x,y); x+=g.measureText(t).width; };
+    g.textBaseline='alphabetic';
+    if(ch.wrap)draw(ch.wrap[0],fs,base);
+    draw(parts.main,fs,base);
+    if(parts.sup)draw(parts.sup,fs*0.72,base-fs*0.32);
+    if(parts.bass)draw(parts.bass,fs,base);
+    if(ch.wrap)draw(ch.wrap[1],fs,base);
+  }
+  restoreBars(g,P);
+  return c;
+}
+/* 把被底色蓋到的小節線從原圖補回來：只複製「整欄幾乎都是墨色」的直線欄位，旁邊的原和弦殘字不會被帶回 */
+function restoreBars(g,P){
+  const W=P.canvas.width, H=P.canvas.height, src=P.canvas.getContext('2d');
+  for(const b of P.seps||[]){
+    const x0=Math.max(0,Math.floor(b.x-2)), x1=Math.min(W,Math.ceil(b.x+b.w+2));
+    const y0=Math.max(0,Math.floor(b.y-b.h*0.45)), y1=Math.min(H,Math.ceil(b.y+b.h*1.45));
+    const w=x1-x0, h=y1-y0; if(w<=0||h<=0)continue;
+    const so=src.getImageData(x0,y0,w,h), dst=g.getImageData(x0,y0,w,h);
+    const dark=i=>so.data[i]+so.data[i+1]+so.data[i+2]<420;
+    let changed=false;
+    for(let cx=0;cx<w;cx++){
+      let n=0; for(let cy=0;cy<h;cy++) if(dark((cy*w+cx)*4))n++;
+      if(n<b.h*0.9)continue;                       // 不是直線欄
+      for(let cy=0;cy<h;cy++){ const i=(cy*w+cx)*4; if(dark(i)){ dst.data[i]=so.data[i]; dst.data[i+1]=so.data[i+1]; dst.data[i+2]=so.data[i+2]; dst.data[i+3]=255; changed=true; } }
+    }
+    if(changed)g.putImageData(dst,x0,y0);
+  }
+}
+/* 依行分組，讓清單照閱讀順序 */
+function linesOf(items){
+  const sorted=[...items].sort((a,b)=>a.page-b.page||a.y-b.y);
+  const lines=[];
+  for(const it of sorted){
+    const cy=it.y+it.h/2;
+    let L=lines.find(l=>l.page===it.page&&Math.abs(l.cy-cy)<Math.max(l.h,it.h)*0.8);
+    if(!L){ L={page:it.page,cy,h:it.h,items:[]}; lines.push(L); }
+    L.items.push(it);
+  }
+  // 分欄：同一行裡相距超過頁寬 20% 的和弦拆開，左欄讀完再讀右欄
+  const segs=[];
+  for(const l of lines){
+    l.items.sort((a,b)=>a.x-b.x);
+    const W=S.pages[l.page]?S.pages[l.page].canvas.width:1e9;
+    let cur=null;
+    for(const it of l.items){
+      if(!cur||it.x-(cur.last.x+cur.last.w)>W*0.2){ cur={page:l.page,cy:l.cy,h:l.h,items:[],col:it.x>W*0.5?1:0}; segs.push(cur); }
+      cur.items.push(it); cur.last=it;
+    }
+  }
+  return segs.sort((a,b)=>a.page-b.page||a.col-b.col||a.cy-b.cy);
+}
+function renderList(){
+  const host=$('list'); host.innerHTML='';
+  const all=[...S.chords.map(c=>({...c,kind:'chord'})), ...S.suspects.map(s=>({...s,kind:'sus'}))];
+  if(!all.length){ host.innerHTML='<div class="hint">還沒有任何和弦。直接在核對圖上點和弦的位置即可新增。</div>'; return; }
+  const lines=linesOf(all);
+  const multi=S.pages.length>1;
+  lines.forEach((L,i)=>{
+    const box=document.createElement('div'); box.className='chips';
+    if(multi&&(i===0||lines[i-1].page!==L.page)){ const h=document.createElement('div'); h.className='linehead'; h.textContent=`第 ${L.page+1} 頁`; host.appendChild(h); }
+    for(const it of L.items){
+      const b=document.createElement('button'); b.className='chip';
+      if(it.kind==='sus'){ b.classList.add('miss'); b.innerHTML=`<b>${esc(it.text)}</b> → 看不懂`; }
+      else{ if(it.status==='warn')b.classList.add('warn'); if(it.status==='man')b.classList.add('man');
+        b.innerHTML=`<b>${esc(it.text)}</b> → <span class="d">${esc(degreeText(it.p))}</span>`; }
+      b.onclick=e=>{ const r=b.getBoundingClientRect(); openPop(it.kind==='sus'?S.suspects.find(s=>s.id===it.id):S.chords.find(c=>c.id===it.id), it.kind, r.left, r.bottom+6); };
+      box.appendChild(b);
+    }
+    host.appendChild(box);
+  });
+}
+function renderSummary(){
+  const n=k=>S.chords.filter(c=>c.status===k).length;
+  $('summary').innerHTML=
+    `<span class="pill">共 <b>${S.chords.length}</b> 個和弦</span>`+
+    `<span class="pill"><span class="dot ok"></span>確定 ${n('ok')}</span>`+
+    `<span class="pill"><span class="dot warn"></span>沒把握 ${n('warn')}</span>`+
+    `<span class="pill"><span class="dot miss"></span>疑似漏抓 ${S.suspects.length}</span>`+
+    `<span class="pill"><span class="dot man"></span>手動 ${n('man')}</span>`;
+}
+const esc=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+/* ================= 點選修改／補和弦 ================= */
+let popTarget=null;
+function onCanvasClick(e,P,cv){
+  const r=cv.getBoundingClientRect(), k=cv.width/r.width;
+  const x=(e.clientX-r.left)*k, y=(e.clientY-r.top)*k;
+  const pad=6*k;
+  const hit=arr=>arr.filter(c=>c.page===P.idx&&x>=c.x-pad&&x<=c.x+c.w+pad&&y>=c.y-pad&&y<=c.y+c.h+pad)
+    .sort((a,b)=>a.w*a.h-b.w*b.h)[0];
+  const c=hit(S.chords); if(c)return openPop(c,'chord',e.clientX,e.clientY+14);
+  const s=hit(S.suspects); if(s)return openPop(s,'sus',e.clientX,e.clientY+14);
+  // 空白處：新增
+  const pageChords=S.chords.filter(c=>c.page===P.idx);
+  const hs=pageChords.map(c=>c.baseH).sort((a,b)=>a-b);
+  const h=hs.length?hs[hs.length>>1]:P.canvas.height/70;
+  openPop({page:P.idx, x:x-h*0.3, y:y-h/2, w:h*1.2, h, baseH:h, text:''},'new',e.clientX,e.clientY+14);
+}
+function openPop(obj,kind,cx,cy){
+  popTarget={obj,kind};
+  $('popTitle').textContent=kind==='new'?'在這裡新增和弦':kind==='sus'?'這裡看起來是和弦，請輸入正確寫法':'修改和弦';
+  $('popIn').value=obj.text||'';
+  $('popDel').style.display=kind==='new'?'none':'';
+  const pop=$('pop'); pop.style.display='block';
+  const W=pop.offsetWidth, Hh=pop.offsetHeight;
+  pop.style.left=Math.max(8,Math.min(cx-W/2, innerWidth-W-8))+'px';
+  pop.style.top=(cy+Hh>innerHeight-8? Math.max(8,cy-Hh-28): cy)+'px';
+  updatePrev(); $('popIn').focus(); $('popIn').select();
+}
+function updatePrev(){
+  const v=$('popIn').value.trim(), el=$('popPrev');
+  if(!v){ el.textContent=''; el.className='prev'; return; }
+  const p=parseChord(v);
+  if(p){ el.className='prev'; el.innerHTML=`級數：<b style="color:var(--deg)">${esc(degreeText(p))}</b>`; }
+  else{ el.className='prev bad'; el.textContent='看不懂這個和弦寫法'; }
+}
+function closePop(){ $('pop').style.display='none'; popTarget=null; }
+$('popIn').addEventListener('input',updatePrev);
+$('popIn').addEventListener('keydown',e=>{ if(e.key==='Enter')$('popOk').click(); if(e.key==='Escape')closePop(); });
+$('popCancel').onclick=closePop;
+$('popDel').onclick=()=>{
+  if(!popTarget)return;
+  const {obj,kind}=popTarget;
+  if(kind==='chord')S.chords=S.chords.filter(c=>c.id!==obj.id);
+  if(kind==='sus')S.suspects=S.suspects.filter(c=>c.id!==obj.id);
+  closePop(); renderAll();
+};
+$('popOk').onclick=()=>{
+  if(!popTarget)return;
+  const p=parseChord($('popIn').value.trim());
+  if(!p){ updatePrev(); return; }
+  const {obj,kind}=popTarget;
+  if(kind==='chord'){ Object.assign(obj,{text:p.text,p,status:'man'}); }
+  else{
+    if(kind==='sus')S.suspects=S.suspects.filter(c=>c.id!==obj.id);
+    S.chords.push({id:S.nextId++, page:obj.page, x:obj.x, y:obj.y, w:obj.w, h:obj.h, baseH:obj.baseH, text:p.text, p, status:'man', src:'manual'});
+  }
+  closePop(); renderAll();
+};
+document.addEventListener('pointerdown',e=>{ if(popTarget&&!$('pop').contains(e.target)&&e.target.tagName!=='CANVAS'&&!e.target.closest('.chip'))closePop(); });
+
+/* ================= 控制列 ================= */
+function syncKeyUI(){
+  $('keySel').value=S.keyName;
+  document.querySelectorAll('#modeSeg button').forEach(b=>b.classList.toggle('active',b.dataset.v===S.mode));
+  $('keyNote').textContent=S.keySrc;
+}
+$('keySel').innerHTML=KEY_NAMES.map(n=>`<option value="${n}">${n}</option>`).join('');
+$('keySel').onchange=()=>{ S.keyName=$('keySel').value; S.key=pcOf(S.keyName); S.keyTouched=true; S.keySrc='已手動指定'; syncKeyUI(); rerender(); };
+function seg(id,fn){ $(id).addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return;
+  $(id).querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b)); fn(b.dataset.v); }); }
+seg('modeSeg',v=>{ S.mode=v; S.keyTouched=true; S.keySrc='已手動指定'; $('keyNote').textContent=S.keySrc; rerender(); });
+seg('fmtSeg',v=>{ S.fmt=v; rerender(); });
+seg('viewSeg',v=>{ S.view=v; applyView(); });
+function rerender(){ if(!$('textArea').hidden)convertText(); else renderAll(); }
+function applyView(){
+  $('colCheck').hidden=S.view==='out'; $('colOut').hidden=S.view==='check';
+  $('views').classList.toggle('single',S.view!=='both');
+}
+$('upBtn').addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); $('fileIn').click(); } });
+$('fileIn').addEventListener('change',e=>{ const f=e.target.files[0]; e.target.value=''; if(f)handleFile(f); });
+/* 拖曳上傳：整個視窗都接受放下，拖進來時高亮上傳框；避免瀏覽器直接開啟檔案 */
+let _dragDepth=0;
+const hasFiles=e=>e.dataTransfer&&[...e.dataTransfer.types].includes('Files');
+window.addEventListener('dragenter',e=>{ if(!hasFiles(e))return; e.preventDefault(); _dragDepth++; document.body.classList.add('dragging'); $('dzText').textContent='放開即可上傳'; });
+window.addEventListener('dragover',e=>{ if(!hasFiles(e))return; e.preventDefault(); e.dataTransfer.dropEffect='copy'; });
+window.addEventListener('dragleave',e=>{ if(!hasFiles(e))return; if(--_dragDepth<=0){ _dragDepth=0; document.body.classList.remove('dragging'); $('dzText').textContent='或把檔案拖曳到這個框裡'; } });
+window.addEventListener('drop',e=>{
+  if(!hasFiles(e))return; e.preventDefault(); _dragDepth=0;
+  document.body.classList.remove('dragging'); $('dzText').textContent='或把檔案拖曳到這個框裡';
+  const f=e.dataTransfer.files[0]; if(f){ window.scrollTo({top:0,behavior:'smooth'}); handleFile(f); }
+});
+$('dlPng').onclick=()=>{
+  if($('imgArea').hidden){ // 文字模式：下載 txt
+    const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([_textPlain],{type:'text/plain'})); a.download='級數譜.txt'; a.click(); return;
+  }
+  const outs=S.pages.map(drawOut);
+  const W=Math.max(...outs.map(c=>c.width)), H=outs.reduce((s,c)=>s+c.height,0)+20*(outs.length-1);
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+  const g=cv.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,W,H);
+  let y=0; outs.forEach(c=>{ g.drawImage(c,0,y); y+=c.height+20; });
+  cv.toBlob(b=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='級數譜.png'; a.click(); },'image/png');
+};
+$('copyTxt').onclick=async()=>{
+  let txt;
+  if(!$('textArea').hidden) txt=_textPlain;
+  else txt=linesOf(S.chords).map(L=>L.items.map(c=>degreeText(c.p)).join('  ')).join('\n');
+  try{ await navigator.clipboard.writeText(txt); status('已複製級數清單。'); }catch(e){ status('複製失敗，瀏覽器不允許存取剪貼簿。',true); }
+};
+
+/* ================= 文字模式 ================= */
+let _textPlain='';
+$('pasteBtn').onclick=()=>showText('');
+function showText(t){
+  $('imgArea').hidden=true; $('textArea').hidden=false; $('ctrl').hidden=false; status('');
+  if(t)$('srcText').value=t;
+  S.keyTouched=false; autoKeyText(); convertText(); $('srcText').focus();
+}
+function autoKeyText(){
+  if(S.keyTouched)return;
+  const t=$('srcText').value;
+  const kt=keyFromText(t);
+  if(kt){ S.key=kt.key; S.keyName=kt.name; S.mode=kt.mode; S.keySrc='依譜上標示的調性'; }
+  else{ const ps=[]; t.split('\n').forEach(l=>tokensOfLine(l).forEach(x=>x.p&&ps.push(x.p))); const kc=keyFromChords(ps); if(kc){ S.key=kc.key; S.keyName=kc.name; S.mode='major'; S.keySrc='譜上沒寫調性，依和弦推測，請確認'; } }
+  syncKeyUI();
+}
+function tokensOfLine(line){
+  if(line.includes('[')) return [...line.matchAll(/\[([^\]]+)\]/g)].map(m=>({raw:m[1],p:parseChord(m[1])}));
+  const ws=line.split(/\s+/).filter(Boolean).filter(w=>!/^[|:()\/\-–x×\d.%]+$/i.test(w));
+  const ps=ws.map(w=>({raw:w,p:parseChord(w.replace(/^[(\[|]+|[)\]|,.;]+$/g,''))}));
+  return ps.length&&ps.filter(x=>x.p).length/ps.length>=0.5?ps:[];
+}
+function convertText(){
+  const src=$('srcText').value, html=[], plain=[];
+  let n=0;
+  for(const line of src.split(/\r?\n/)){
+    if(line.includes('[')){
+      let h='',p='';
+      for(const piece of line.split(/(\[[^\[\]]*\])/)){
+        const inner=piece.startsWith('[')&&piece.endsWith(']')?piece.slice(1,-1):null;
+        const c=inner&&parseChord(inner);
+        if(c){ n++; const d=degreeText(c); h+=`[<span class="dg">${esc(d)}</span>]`; p+=`[${d}]`; } else { h+=esc(piece); p+=piece; }
+      }
+      html.push(h); plain.push(p); continue;
+    }
+    if(tokensOfLine(line).length){
+      let h='',p='';
+      for(const part of line.split(/(\s+)/)){
+        if(!part)continue;
+        const m=part.match(/^([(\[|]*)(.*?)([)\]|,.;]*)$/);
+        const c=m&&parseChord(m[2]);
+        if(c){ n++; const d=degreeText(c); h+=esc(m[1])+`<span class="dg">${esc(d)}</span>`+esc(m[3]); p+=m[1]+d+m[3]; }
+        else{ h+=esc(part); p+=part; }
+      }
+      html.push(h); plain.push(p);
+    }else{ html.push(esc(line)); plain.push(line); }
+  }
+  $('textOut').innerHTML=html.join('\n')||'<span class="hint">轉換結果會顯示在這裡。</span>';
+  _textPlain=plain.join('\n');
+  $('summary').innerHTML=`<span class="pill">共 <b>${n}</b> 個和弦</span>`;
+}
+$('srcText').addEventListener('input',()=>{ autoKeyText(); convertText(); });
+</script>
+</body>
+</html>
