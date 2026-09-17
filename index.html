@@ -160,7 +160,8 @@ const QUAL_OK=/^(?:maj|Maj|MAJ|M|min|mi|m|-|dim|aug|\+|sus|add|no|omit|alt|ø|[0
 /* 解析和弦：回傳 {root, minor, rest, bass} 或 null */
 function parseChord(raw){
   const t=normChordText(raw);
-  const m=t.match(/^([A-G][#b]?)(.*?)(?:\/([A-G][#b]?))?$/);
+  // 低音容許前置升降記號：原譜偶有 G7/#Bb 這種寫法（#Bb＝B），照字面還原音高，但標記 odd 讓使用者核對
+  const m=t.match(/^([A-G][#b]?)(.*?)(?:\/([#b]?[A-G][#b]?))?$/);
   if(!m)return null;
   let q=m[2]||'';
   if(!QUAL_OK.test(q))return null;
@@ -175,7 +176,10 @@ function parseChord(raw){
   q=q.replace(/sus(?![0-9])/,'sus4');
   if(q==='2')q='add9';                          // D2 記為 add9
   if(q==='+')q='aug';
-  return {root:pcOf(m[1]), rootL:m[1][0], minor, rest:q, bass:m[3]?pcOf(m[3]):null, bassL:m[3]?m[3][0]:null, text:t};
+  let bass=null, bassL=null, odd=false;
+  if(m[3]){ const L=m[3].match(/[A-G]/)[0]; bassL=L; odd=/^[#b]/.test(m[3]);
+    bass=(LET[L]+(m[3].match(/#/g)||[]).length-(m[3].match(/b/g)||[]).length+12)%12; }
+  return {root:pcOf(m[1]), rootL:m[1][0], minor, rest:q, bass, bassL, odd, text:t};
 }
 const STEPS={major:[0,2,4,5,7,9,11], minor:[0,2,3,5,7,8,10]};
 const ROMAN=['I','II','III','IV','V','VI','VII'];
@@ -626,7 +630,7 @@ function dedupe(list){ const out=[]; for(const c of list){ const d=out.find(o=>i
 function addResults(P,keep,sus){
   for(const c of keep){
     S.chords.push({id:S.nextId++, page:P.idx, x:c.x, y:c.y, w:c.w, h:c.h, baseH:c.baseH||c.h, text:c.p.text, p:c.p, wrap:c.wrap||null,
-      status: c.src==='pdf'&&c.conf>=100?'ok':(c.conf>=80?'ok':'warn'), src:c.src});
+      status: c.p.odd?'warn':(c.src==='pdf'&&c.conf>=100?'ok':(c.conf>=80?'ok':'warn')), src:c.src});
   }
   for(const c of sus){
     if(S.chords.some(k=>k.page===P.idx&&iou(k,c)>0.2))continue;
